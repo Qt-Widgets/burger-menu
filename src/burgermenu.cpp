@@ -16,7 +16,10 @@ static const QString MainBurgerButtonObjectName("MainBurgerButton");
 class BurgerButton : public QPushButton
 {
 public:
-    BurgerButton(QAction* action, QWidget* parent) : QPushButton(parent), mAction(action), mIconSize(QSize(64,64))
+    BurgerButton(QAction* action, QWidget* parent)
+        : QPushButton(parent)
+        , mIconSize(QSize(64,64))
+        , mAction(action)
     {
         setObjectName(BurgerButtonObjectName);
         connect(action, &QAction::destroyed, this, &BurgerButton::deleteLater);
@@ -39,16 +42,17 @@ public:
         opt.state |= (mAction->isChecked() ? QStyle::State_On : QStyle::State_Off);
 
         style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
+        const QRect contentsRect = style()->subElementRect(QStyle::SE_PushButtonContents, &opt, this);
         if(!mAction->icon().isNull())
         {
             QIcon::Mode mode = ((opt.state & QStyle::State_MouseOver) == 0) ? QIcon::Normal : QIcon::Active;
             if(!isEnabled())
                 mode = QIcon::Disabled;
             QIcon::State state = mAction->isChecked() ? QIcon::On : QIcon::Off;
-            painter.drawPixmap(QRect(QPoint(0,0), mIconSize), mAction->icon().pixmap(mIconSize, mode, state));
+            painter.drawPixmap(QRect(contentsRect.topLeft(), mIconSize), mAction->icon().pixmap(mIconSize, mode, state));
         }
 
-        opt.rect = rect().adjusted(mIconSize.width(), 0, 0, 0);
+        opt.rect = contentsRect.adjusted(mIconSize.width()+1, 0, 0, 0);
         opt.text = fontMetrics().elidedText(mAction->iconText(), Qt::ElideRight, opt.rect.width(), Qt::TextShowMnemonic);
         style()->drawControl(QStyle::CE_CheckBoxLabel, &opt, &painter, this);
     }
@@ -64,11 +68,11 @@ private:
 
 
 BurgerMenu::BurgerMenu(QWidget* parent)
-    : QWidget(parent),
-      mActions(new QActionGroup(this)),
-      mBurgerButton(new QPushButton(this)),
-      mMenuWidth(200),
-      mAnimated(true)
+    : QWidget(parent)
+    , mActions(new QActionGroup(this))
+    , mBurgerButton(new QPushButton(this))
+    , mMenuWidth(200)
+    , mAnimated(true)
 {
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     mBurgerButton->setObjectName(MainBurgerButtonObjectName);
@@ -96,7 +100,8 @@ BurgerMenu::BurgerMenu(QWidget* parent)
     lay->addStretch();
     setFixedWidth(48);
 
-    connect(mBurgerButton, &QPushButton::toggled, this, &BurgerMenu::toggle);
+    connect(mBurgerButton, &QPushButton::toggled, this, &BurgerMenu::setExpansionState);
+    connect(mBurgerButton, &QPushButton::toggled, this, &BurgerMenu::expandedChanged);
     connect(mActions, &QActionGroup::triggered, this, &BurgerMenu::triggered);
 }
 
@@ -167,9 +172,9 @@ void BurgerMenu::setIconSize(const QSize& size)
         btn->setIconSize(size);
 
     if(mBurgerButton->isChecked())
-        setFixedWidth(size.width() + mMenuWidth);
+        setFixedWidth(mBurgerButton->width() + mMenuWidth);
     else
-        setFixedWidth(size.width());
+        setFixedWidth(mBurgerButton->width());
 
     emit iconSizeChanged(size);
 }
@@ -182,31 +187,31 @@ void BurgerMenu::setMenuWidth(int width)
     mMenuWidth = width;
 
     if(mBurgerButton->isChecked())
-        setFixedWidth(mBurgerButton->iconSize().width() + mMenuWidth);
+        setFixedWidth(mBurgerButton->width() + mMenuWidth);
     else
-        setFixedWidth(mBurgerButton->iconSize().width());
+        setFixedWidth(mBurgerButton->width());
 
     emit menuWidthChanged(mMenuWidth);
 }
 
-void BurgerMenu::toggle(bool checked)
+void BurgerMenu::setExpansionState(bool expanded)
 {
     if(mAnimated)
     {
         auto anim = new QPropertyAnimation(this, "minimumWidth", this);
         anim->setDuration(250);
-        anim->setStartValue(mBurgerButton->iconSize().width());
-        anim->setEndValue(mBurgerButton->iconSize().width() + mMenuWidth);
-        anim->setDirection(checked ? QAbstractAnimation::Forward : QAbstractAnimation::Backward);
-        anim->setEasingCurve(checked ? QEasingCurve::OutCubic : QEasingCurve::InCubic);
+        anim->setStartValue(mBurgerButton->width());
+        anim->setEndValue(mBurgerButton->width() + mMenuWidth);
+        anim->setDirection(expanded ? QAbstractAnimation::Forward : QAbstractAnimation::Backward);
+        anim->setEasingCurve(expanded ? QEasingCurve::OutCubic : QEasingCurve::InCubic);
         anim->start(QAbstractAnimation::DeleteWhenStopped);
     }
     else
     {
-        if(checked)
-            setFixedWidth(mBurgerButton->iconSize().width() + mMenuWidth);
+        if(expanded)
+            setFixedWidth(mBurgerButton->width() + mMenuWidth);
         else
-            setFixedWidth(mBurgerButton->iconSize().width());
+            setFixedWidth(mBurgerButton->width());
     }
 }
 
@@ -231,6 +236,11 @@ bool BurgerMenu::animated() const
     return mAnimated;
 }
 
+bool BurgerMenu::expanded() const
+{
+    return mBurgerButton->isChecked();
+}
+
 void BurgerMenu::setAnimated(bool animated)
 {
     if(mAnimated == animated)
@@ -238,6 +248,11 @@ void BurgerMenu::setAnimated(bool animated)
 
     mAnimated = animated;
     emit animatedChanged(mAnimated);
+}
+
+void BurgerMenu::setExpanded(bool expanded)
+{
+    mBurgerButton->setChecked(expanded);
 }
 
 void BurgerMenu::paintEvent(QPaintEvent*)
